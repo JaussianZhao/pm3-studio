@@ -1,0 +1,26 @@
+PM3 Studio V0.13 — native FE surface update
+
+This is an UPDATE package for an existing V0.12 website.
+Keep the existing assets/figures folder (78 scientific images).
+
+Upload index.html to the repository root.
+Upload assets/native-viewer.js and assets/image-controls.js to assets/.
+Upload the entire assets/native folder to assets/native/.
+All individual new files are below 8 MB. If a batch upload fails,
+upload 5–10 chunk JS files at a time inside assets/native/.
+The new catalog.js and all 73 chunk files are required for complete coverage.
+Do not upload the ZIP itself. Do not remove assets/figures.
+
+Contents: 235 production cases + 9 sensitivity snapshots.
+Exact per-body FE boundary geometry and paired surface-node temperatures.
+Temperature scale: fixed 74.75–104.80 Celsius; 80 Celsius enters warm yellow.
+Surface skins are not internal volume-cell connectivity.
+High-order face fills are piecewise-linear display tessellation through supplied nodes.
+Native mesh edges follow original face perimeters, including midside nodes.
+Cavity and pore air can be shown with toggles. TIM2 is a contact interface.
+Nine sensitivity previews are built sequentially; click a card to inspect its model.
+
+No GitHub repository or published website was changed automatically.
+
+Images: wheel or +/− to zoom, drag to pan, Fit/double-click to reset; touch pinch supported.
+Nine-card controls act on each image independently; use the 3D button for interactive inspection.
