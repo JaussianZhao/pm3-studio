@@ -4519,7 +4519,7 @@ three/build/three.module.js:
 })();
 </script>
 <script id="pm3-power-navigation">(()=>{const dlg=document.getElementById('power-diagram-dialog');const names=['original','adopted'];function move(delta){if(!dlg?.open)return;const src=document.getElementById('diagram-dialog-image')?.src;let idx=names.findIndex(n=>document.querySelector(`[data-diagram="${n}"] img`)?.src===src);idx=(idx+delta+names.length)%names.length;dlg.close();document.querySelector(`[data-diagram="${names[idx]}"]`)?.click();}document.getElementById('pm3-power-previous')?.addEventListener('click',()=>move(-1));document.getElementById('pm3-power-next')?.addEventListener('click',()=>move(1));document.addEventListener('keydown',e=>{if(!dlg?.open||document.getElementById('pm3-figure-dialog')?.open)return;if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopImmediatePropagation();move(e.key==='ArrowRight'?1:-1);}},true);})();</script><script>(()=>{for(const [cls,key,sign,min,max] of [["pm3-resize-left","--left-width",1,180,500],["pm3-resize-right","--right-width",-1,250,600]]){let h=document.querySelector("."+cls);if(!h)continue;h.addEventListener("pointerdown",e=>{e.preventDefault();let side=h.parentElement,initial=side.getBoundingClientRect().width,start=e.clientX;h.setPointerCapture(e.pointerId);h.onpointermove=x=>document.documentElement.style.setProperty(key,Math.min(max,Math.max(min,initial+sign*(x.clientX-start)))+"px");h.onpointerup=()=>h.onpointermove=null})}})();</script><script src="assets/native/catalog.js"></script>
-<script src="assets/native-viewer.js"></script>
+<script src="assets/native-viewer.js?v=20261029-layout-outlines"></script>
 <script src="assets/image-controls.js"></script>
 </body>
 </html>
