@@ -1,0 +1,68 @@
+/* Phone presentation: reserve a clear canvas and disclose secondary controls on demand. */
+.pm3-mobile-only{display:none}
+.pm3-phone .pm3-mobile-only{display:block}
+.pm3-phone .app-shell{height:var(--pm3-viewport-height,100dvh);min-height:0;overflow:hidden}
+.pm3-phone .main-area,.pm3-phone .content-area{min-height:0;height:100%;width:100%}
+.pm3-phone .content-area{flex:1}
+.pm3-phone .topbar{height:52px;min-height:52px;padding:0 12px}
+.pm3-phone .topbar-title{gap:10px;min-width:0}
+.pm3-phone .topbar-title>strong{font-size:0}
+.pm3-phone .topbar-title>strong:after{content:'PM3 Studio';font:600 15px Arial,sans-serif}
+.pm3-phone .breadcrumb,.pm3-phone .slash,.pm3-phone .topbar-chip,.pm3-phone .topbar-right{display:none}
+.pm3-phone .mobile-menu{width:44px;height:44px;margin:0}
+.pm3-phone #toggle-right-panel{width:auto;min-width:64px;height:38px;font-size:0}
+.pm3-phone #toggle-right-panel:after{content:'Details';font:600 12px Arial,sans-serif}
+.pm3-phone .viewport-panel,.pm3-phone .app-shell.hide-right .viewport-panel{height:100%;min-height:0;max-height:none;flex:1;overflow:hidden}
+.pm3-phone .viewport-top{left:12px;right:12px;top:10px;pointer-events:none}
+.pm3-phone .viewport-top>.scene-kicker,.pm3-phone .viewport-top>h1,.pm3-phone .viewport-top>p{display:none}
+.pm3-phone .mobile-model-caption{font:600 12px Arial,sans-serif;color:#31576b;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin:0 2px 9px}
+.pm3-phone .view-state-controls{display:flex;width:100%;margin:0;padding:3px;gap:3px;border-radius:10px;pointer-events:auto;box-shadow:none}
+.pm3-phone .view-state-controls button{flex:1;min-width:0;min-height:38px;padding:8px 4px;font-size:12px;white-space:nowrap}
+.pm3-phone #render-mode-controls{display:flex;gap:5px;margin-top:7px;pointer-events:auto}
+.pm3-phone #render-mode-controls button{flex:1;min-width:0;min-height:36px;border:1px solid #cedde5;border-radius:7px;background:#ffffffdc;color:#547084;font:600 11px Arial,sans-serif;padding:6px 3px}
+.pm3-phone #render-mode-controls button.active{background:#294f63;color:#fff;border-color:#294f63}
+.pm3-phone #render-mode-controls button:disabled{opacity:.45}
+.pm3-phone .scene-container{position:absolute;inset:124px 0 116px;width:100%;height:auto}
+.pm3-phone .native-status{display:none}
+.pm3-phone .native-status[data-state=error],.pm3-phone .native-status[data-state=loading]{display:block;top:8px;left:12px;right:12px;font-size:10px;background:#f4f8fbea;padding:6px;border-radius:5px}
+.pm3-phone .scene-focus-card,.pm3-phone .dimension-label,.pm3-phone .axis-widget,.pm3-phone .scene-bottomnote,.pm3-phone .toolbar-hint{display:none}
+.pm3-phone .viewport-panel .scene-toolbar{left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));max-width:none;justify-content:center;z-index:12}
+.pm3-phone .toolbar-group{display:flex;gap:2px;padding:3px 5px;border-radius:12px;box-shadow:0 3px 14px #173b4c0b}
+.pm3-phone .tool-btn{width:44px;min-width:44px;height:44px}
+.pm3-phone .toolbar-sep{margin:0 3px}
+.pm3-phone #zoom-in,.pm3-phone #zoom-out,.pm3-phone #explode-btn,.pm3-phone .toolbar-sep{display:none}
+.pm3-phone #mobile-more{font:600 11px Arial,sans-serif;width:55px}
+.pm3-phone .viewport-panel .field-view-caption{left:16px;right:16px;bottom:calc(69px + env(safe-area-inset-bottom,0px));max-width:none;padding:7px 10px;border-radius:8px;box-shadow:none;pointer-events:none}
+.pm3-phone #field-view-title,.pm3-phone #field-view-note{display:none}
+.pm3-phone .field-view-caption .temperature-gradient{height:6px;margin:0;border-radius:4px}
+.pm3-phone .field-view-caption .temperature-scale{font-size:9px;padding-top:4px;line-height:1.2}
+.pm3-phone .field-view-caption .temperature-scale:after{display:none}
+.pm3-phone .field-view-caption:has(.temperature-gradient[hidden]){display:none!important}
+.pm3-phone .viewport-panel .native-controls{display:none;position:fixed;left:12px;right:12px;bottom:calc(68px + env(safe-area-inset-bottom,0px));max-width:none;padding:14px;gap:14px;border:1px solid #cddde5;box-shadow:0 4px 24px #12303c22;z-index:15;align-items:flex-start}
+.pm3-phone.mobile-options-open .viewport-panel .native-controls{display:flex;flex-direction:column}
+.pm3-phone .native-controls label{font-size:13px;min-height:30px}
+.pm3-phone .native-controls input{width:19px;height:19px;margin-right:7px}
+.pm3-phone .native-controls select{min-height:36px;font-size:12px}
+.pm3-phone .inspector,.pm3-phone .app-shell.hide-right .inspector{display:block;position:fixed;top:64px;bottom:0;left:0;right:0;width:100%;max-width:none;transform:translateY(110%);visibility:hidden;z-index:42;border-radius:18px 18px 0 0;border:1px solid #cddde5;overflow-y:auto;transition:transform .2s ease,visibility .2s;pointer-events:none}
+.pm3-phone.mobile-inspector-open .inspector{transform:translateY(0);visibility:visible;pointer-events:auto}
+.pm3-phone .inspector-head{position:sticky;top:0;background:#fff;z-index:3;min-height:48px;padding:12px 18px}
+.pm3-phone .panel-dots,.pm3-phone .pm3-resize{display:none}
+.pm3-phone #mobile-details-close{border:0;background:#eff4f7;border-radius:7px;color:#31576b;min-width:38px;height:34px;font-size:20px}
+.pm3-phone .render-selector{display:none}
+.pm3-phone .inspector-content{overflow:visible;height:auto}
+.pm3-phone #mobile-details-scrim:not([hidden]){display:block;position:fixed;inset:0;border:0;background:#102c4166;z-index:41}
+.pm3-phone .native-grid-panel{padding:8px 8px 25px}
+.pm3-phone .native-nine{grid-template-columns:1fr}
+.pm3-phone .native-grid-panel header>div{flex-wrap:wrap}
+@media(prefers-reduced-motion:reduce){.pm3-phone .inspector{transition:none}}
+@media(max-height:520px){
+ .pm3-phone .topbar{height:44px;min-height:44px}
+ .pm3-phone .viewport-top{display:grid;grid-template-columns:1fr 1fr;gap:7px;top:7px}
+ .pm3-phone .mobile-model-caption{display:none}
+ .pm3-phone #render-mode-controls{margin:0}
+ .pm3-phone .view-state-controls button{font-size:11px;min-height:36px}
+ .pm3-phone .scene-container{inset:56px 0 104px}
+ .pm3-phone .viewport-panel .field-view-caption{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+ .pm3-phone .inspector{top:48px}
+}
+.pm3-phone .viewport-panel:has(.native-controls[hidden]) #mobile-more{display:none}
