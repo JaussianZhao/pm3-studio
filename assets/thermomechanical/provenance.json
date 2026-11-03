@@ -1,0 +1,87 @@
+{
+  "states": [
+    {
+      "case_id": "TM_1p0_A_M0matched_TM",
+      "temperature_nodes_verified": 49968,
+      "surface_vertices": 41248,
+      "surface_faces": 19270,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "c788fe587b5b93b8a789495e4806f0b720aefe2978971de07072c5ff758652f0",
+      "applied_temperature_sha256": "421c8b6b741dec7843ed6c713538261dd995aba183286ebf7dd7f3bed8a18561"
+    },
+    {
+      "case_id": "TM_1p0_A_M3_TM",
+      "temperature_nodes_verified": 46417,
+      "surface_vertices": 39040,
+      "surface_faces": 18162,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "0d232f5d1fd5cc274e4cca5d35b54c77715818dd2968b319d0a02916f8645d07",
+      "applied_temperature_sha256": "624368d99a074ea53aa69cd3540d84058f25df2e42a57bd1cfde2406995f9771"
+    },
+    {
+      "case_id": "TM_1p0_L_M0matched_TM",
+      "temperature_nodes_verified": 49932,
+      "surface_vertices": 41282,
+      "surface_faces": 19284,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "cefe186039138cf8799c80845f14c532559c623d4e5326f27d123a1a8230499b",
+      "applied_temperature_sha256": "0e5edf1928b57947c993a8c407b55dab0a535841799bc39c2dd89bec3e1f8c28"
+    },
+    {
+      "case_id": "TM_1p0_L_M3_TM",
+      "temperature_nodes_verified": 46439,
+      "surface_vertices": 39072,
+      "surface_faces": 18178,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "77271e639490756a6a94674c3651dee31ef7353c567714963515e9bab9960561",
+      "applied_temperature_sha256": "97ea58234d87e9a7453891b2cfbaaa06acf20325ec338e416a32fd6b1cb1f8e4"
+    },
+    {
+      "case_id": "TM_10p0_A_M0matched_TM",
+      "temperature_nodes_verified": 129782,
+      "surface_vertices": 104520,
+      "surface_faces": 50046,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "72f7435f7ef25b00ed719e25c8ad09c4a9148406dadaf7cce2640982e0aea61d",
+      "applied_temperature_sha256": "d4669ee57d4f16a34fcc5a42a1405b8de8c6d9332e93f7b0d680ed20803d5bb6"
+    },
+    {
+      "case_id": "TM_10p0_A_M3_TM",
+      "temperature_nodes_verified": 103490,
+      "surface_vertices": 84584,
+      "surface_faces": 40082,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "1e2cd3326ba5d2b415364da04562caf55dfe260dd56a7a9d57a7f8dfc5fd39df",
+      "applied_temperature_sha256": "7276c7b13606d9feb956e00e82077fe4b1a08ae83cf06efa71ba443c3b65647a"
+    },
+    {
+      "case_id": "TM_10p0_F_M0matched_TM",
+      "temperature_nodes_verified": 130274,
+      "surface_vertices": 104739,
+      "surface_faces": 50166,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "5b945f3c0d4a1124feacbb025d8d12022aedf978581435eb7dcf7e5298fda2f2",
+      "applied_temperature_sha256": "4f8924f23a4c7f7a22273a1688e8119183713669fa620cb602177e1c08b299c5"
+    },
+    {
+      "case_id": "TM_10p0_F_M3_TM",
+      "temperature_nodes_verified": 103670,
+      "surface_vertices": 84588,
+      "surface_faces": 40084,
+      "max_coordinate_rounding_mm": 5e-07,
+      "max_temperature_rounding_C": 0.0005,
+      "mesh_sha256": "25a8ff5d3f666435166d2c37f229ab23002ba508dc359d4fabf6d64b9dd8cbab",
+      "applied_temperature_sha256": "b7f8a5ef5b842fe10b5dc927ed8f2b84e92b30379826317cbb5bfa166092823a"
+    }
+  ],
+  "source": "Retained interface-corrected native connectivity and archived prescribed_temperatures_hot.csv",
+  "exporter": "scripts/export_thermomechanical.py",
+  "checks": "All structural node IDs and applied temperatures matched, native solid element counts checked; no solve, remeshing or spatial temperature estimation."
+}

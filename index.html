@@ -216,6 +216,7 @@
  .app-shell.hide-right .inspector{display:none}.app-shell.hide-right .viewport-panel{height:calc(var(--pm3-viewport-height,100vh) - 54px)}
 }
 </style><link rel="stylesheet" href="assets/mobile-layout.css?v=20261030-phone">
+<link rel="stylesheet" href="assets/thermomechanical/viewer.css?v=20261104">
 </head>
   <body>
     <div class="app-shell">
@@ -245,7 +246,7 @@
       <main class="main-area">
         <header class="topbar">
           <div class="topbar-title"><button class="mobile-menu" id="mobile-menu" aria-label="Open layer navigation">☰</button><button class="panel-toggle" id="toggle-left-panel" aria-label="Collapse layer navigation" title="Collapse layer navigation" aria-expanded="true" aria-controls="sidebar">‹</button><span class="breadcrumb">WORKSPACE</span><span class="slash">/</span><strong>PM3 Package Architecture</strong><span class="topbar-chip">3D VIEWER</span></div>
-          <div class="topbar-controls"><span class="topbar-right"><span class="online-dot"></span> INTERACTIVE VIEW <span class="divider-v"></span><span class="topbar-date">28 OCT 2026</span></span><button class="panel-toggle" id="toggle-right-panel" aria-label="Collapse structure inspector" title="Collapse structure inspector" aria-expanded="true" aria-controls="inspector">›</button></div>
+          <div class="topbar-controls"><span class="topbar-right"><span class="online-dot"></span> INTERACTIVE VIEW <span class="divider-v"></span><span class="topbar-date">04 NOV 2026</span></span><button class="panel-toggle" id="toggle-right-panel" aria-label="Collapse structure inspector" title="Collapse structure inspector" aria-expanded="true" aria-controls="inspector">›</button></div>
         </header>
 
         <div class="content-area">
@@ -4547,8 +4548,10 @@ three/build/three.module.js:
 })();
 </script>
 <script id="pm3-power-navigation">(()=>{const dlg=document.getElementById('power-diagram-dialog');const names=['original','adopted'];function move(delta){if(!dlg?.open)return;const src=document.getElementById('diagram-dialog-image')?.src;let idx=names.findIndex(n=>document.querySelector(`[data-diagram="${n}"] img`)?.src===src);idx=(idx+delta+names.length)%names.length;dlg.close();document.querySelector(`[data-diagram="${names[idx]}"]`)?.click();}document.getElementById('pm3-power-previous')?.addEventListener('click',()=>move(-1));document.getElementById('pm3-power-next')?.addEventListener('click',()=>move(1));document.addEventListener('keydown',e=>{if(!dlg?.open||document.getElementById('pm3-figure-dialog')?.open)return;if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopImmediatePropagation();move(e.key==='ArrowRight'?1:-1);}},true);})();</script><script>(()=>{for(const [cls,key,sign,min,max] of [["pm3-resize-left","--left-width",1,180,500],["pm3-resize-right","--right-width",-1,250,600]]){let h=document.querySelector("."+cls);if(!h)continue;h.addEventListener("pointerdown",e=>{e.preventDefault();let side=h.parentElement,initial=side.getBoundingClientRect().width,start=e.clientX;h.setPointerCapture(e.pointerId);h.onpointermove=x=>document.documentElement.style.setProperty(key,Math.min(max,Math.max(min,initial+sign*(x.clientX-start)))+"px");h.onpointerup=()=>h.onpointermove=null})}})();</script><script src="assets/native/catalog.js"></script>
-<script src="assets/native-viewer.js?v=20261029-contact-data-speed"></script>
+<script src="assets/native-viewer.js?v=20261104-tm"></script>
 <script src="assets/image-controls.js?v=20261029-vector-zoom"></script>
 <script src="assets/viewport-layout.js?v=20261029-tablet-toolbar"></script><script src="assets/mobile-layout.js?v=20261030-phone"></script>
+<script src="assets/thermomechanical/catalog.js?v=20261104"></script>
+<script src="assets/thermomechanical/viewer.js?v=20261104"></script>
 </body>
 </html>

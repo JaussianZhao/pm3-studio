@@ -285,6 +285,7 @@ let contextFitKey='';
 let previousFrame=performance.now();
 window.pm3NativeFrame=()=>{
  let now=performance.now(),alpha=reducedMotion.matches?1:1-Math.exp(-Math.min(now-previousFrame,250)/110);previousFrame=now;
+ if(window.PM3Thermomechanical?.active){root.visible=false;B.original.visible=false;grid.hidden=true;controls.hidden=true;status.hidden=true;window.PM3Thermomechanical.frame(alpha);return;}
  let s=B.state();if(s.view!=='mesh-study'&&expanded){expanded=null;gridGeneration++;}
  contactControl.hidden=s.layer!=='tim2'||s.mode==='geometry'||s.view==='mesh-study'||s.view==='m1-study';
  let study=s.view==='mesh-study'&&!expanded;grid.hidden=!study;$('#native-grid-back').hidden=!expanded;controls.hidden=s.view==='m1-study';status.hidden=study||s.view==='m1-study';
