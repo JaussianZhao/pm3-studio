@@ -131,6 +131,20 @@ function featureIndices(edges,contacts=null,positions=null){
  return new Uint32Array(indices);
 }
 function concat(arr,type,size){let out=new type(size),o=0;for(let a of arr){out.set(a,o);o+=a.length;}return out;}
+// A filled partition shares faces with the surrounding solid. Keep those source
+// skins for provenance, but never draw them as an exposed mesh or a void wall.
+function exposedSkin(faces,contacts,original,count,positions){
+ const byFace=new Map(),hidden=new Uint8Array(count);
+ for(let face of faces){let previous=byFace.get(face.key);if(previous){hidden.fill(1,previous.start,previous.start+previous.count);hidden.fill(1,face.start,face.start+face.count);}else byFace.set(face.key,face);}
+ for(let face of faces)if(!hidden[face.start]&&face.contact&&coveredContact(face.contact,contacts))hidden.fill(1,face.start,face.start+face.count);
+ let exposed=[],lines=[],seen=new Set();
+ const vertexKey=i=>[positions[i*3],positions[i*3+1],positions[i*3+2]].map(x=>Math.round(x*5e6)).join(',');
+ for(let face of faces)if(!hidden[face.start]){
+  for(let i=face.start;i<face.start+face.count;i++)exposed.push(original[i]);
+  for(let i=0;i<face.vertices.length;i++){let a=face.vertices[i],b=face.vertices[(i+1)%face.vertices.length],ka=vertexKey(a),kb=vertexKey(b),key=ka<kb?ka+'|'+kb:kb+'|'+ka;if(!seen.has(key)){seen.add(key);lines.push(a,b);}}
+ }
+ return{exposed:new Uint32Array(exposed),lines:new Uint32Array(lines)};
+}
 const topologyCache=new Map();let topologyBytes=0;
 function rememberTopology(key,value){if(!key)return;value.bytes=[value.pos,value.tri,value.lines,value.features,value.exposed].reduce((n,a)=>n+a.byteLength,0);topologyCache.set(key,value);topologyBytes+=value.bytes;for(let [oldKey,old]of topologyCache){if(topologyBytes<=24*1024*1024)break;topologyCache.delete(oldKey);topologyBytes-=old.bytes;}}
 async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden=false,geometryDetails=true){
@@ -145,23 +159,20 @@ async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden
   let reusable=parts.get(body.part);if(reusable?.cached){let t=await decode(body.temperatures,'temperature');if(t.length!==body.surface_vertices)throw Error('Cached topology/temperature pairing mismatch');reusable.col.push(colors(t));reusable.n+=t.length;if(++processed%12===0)await new Promise(resolve=>setTimeout(resolve,0));continue;}
   if(!geometries.has(body.mesh))geometries.set(body.mesh,await decode(body.mesh,'mesh'));
   let g=geometries.get(body.mesh);
-  let range={min:[Infinity,Infinity,Infinity],max:[-Infinity,-Infinity,-Infinity]},keys=geometryDetails?new Array(g.n):null,pos=new Float32Array(g.n*3),xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
+  let range={min:[Infinity,Infinity,Infinity],max:[-Infinity,-Infinity,-Infinity]},keys=new Array(g.n),pos=new Float32Array(g.n*3),xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
   for(let i=0;i<g.n;i++){if(keys)keys[i]=[g.q[i*3]+body.origin_q[0],g.q[i*3+1]+body.origin_q[1],g.q[i*3+2]+body.origin_q[2]].join(',');let x=(g.q[i*3]+body.origin_q[0])/1e6,y=(g.q[i*3+1]+body.origin_q[1])/1e6,z=(g.q[i*3+2]+body.origin_q[2])/1e6;pos[i*3]=x/5;pos[i*3+1]=z/5;pos[i*3+2]=-y/5;for(let a=0;a<3;a++){range.min[a]=Math.min(range.min[a],pos[i*3+a]);range.max[a]=Math.max(range.max[a],pos[i*3+a]);}xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);}
   if(patch&&(xmax<patch[0]+1e-5||xmin>patch[1]-1e-5||ymax<patch[2]+1e-5||ymin>patch[3]-1e-5))continue;
   if(!temps.has(body.temperatures))temps.set(body.temperatures,await decode(body.temperatures,'temperature'));let t=temps.get(body.temperatures);if(t.length!==g.n||g.n!==body.surface_vertices)throw Error('Native mesh/temperature pairing mismatch');
-  if(!parts.has(body.part))parts.set(body.part,{pos:[],col:[],tri:[],line:[],features:new Map(),contacts:new Map(),contactFaces:[],n:0,nt:0,nl:0});let p=parts.get(body.part),col=colors(t);
-  let triangles=[],lines=[],seen=new Set();for(let f=0;f<g.f;f++){let start=g.offsets[f],end=g.offsets[f+1],len=end-start,pat=patterns[len];if(!pat)throw Error('Unsupported native face width '+len);if(geometryDetails){let contact=addFeatureFace(p.features,g.indices,keys,pos,start,end,p.n,p.contacts,range);if(contact)p.contactFaces.push({...contact,start:p.nt+triangles.length,count:pat.length});}for(let v of pat)triangles.push(p.n+g.indices[start+v]);for(let i=start;i<end;i++){let a=g.indices[i],b=g.indices[i+1<end?i+1:start],key=Math.min(a,b)*g.n+Math.max(a,b);if(!seen.has(key)){seen.add(key);lines.push(p.n+a,p.n+b);}}}
+  if(!parts.has(body.part))parts.set(body.part,{pos:[],col:[],tri:[],line:[],features:new Map(),contacts:new Map(),faces:[],n:0,nt:0,nl:0});let p=parts.get(body.part),col=colors(t);
+  let triangles=[],lines=[],seen=new Set();for(let f=0;f<g.f;f++){let start=g.offsets[f],end=g.offsets[f+1],len=end-start,pat=patterns[len];if(!pat)throw Error('Unsupported native face width '+len);let contact=geometryDetails?addFeatureFace(p.features,g.indices,keys,pos,start,end,p.n,p.contacts,range):null,vertices=Array.from(g.indices.subarray(start,end));p.faces.push({key:vertices.map(i=>keys[i]).sort().join('|'),vertices:vertices.map(i=>p.n+i),start:p.nt+triangles.length,count:pat.length,contact});for(let v of pat)triangles.push(p.n+g.indices[start+v]);for(let i=start;i<end;i++){let a=g.indices[i],b=g.indices[i+1<end?i+1:start],key=Math.min(a,b)*g.n+Math.max(a,b);if(!seen.has(key)){seen.add(key);lines.push(p.n+a,p.n+b);}}}
   p.pos.push(pos);p.col.push(col);p.tri.push(new Uint32Array(triangles));p.line.push(new Uint32Array(lines));p.n+=g.n;p.nt+=triangles.length;p.nl+=lines.length;
   if(++processed%12===0)await new Promise(resolve=>setTimeout(resolve,0));
  }
  let group=new B.Group();group.userData.caseId=rec.case_id;group.userData.snapshot=rec;
  for(let [id,p]of parts){let part=new B.Group(),geometry=new B.Geometry(),position=new B.Attribute(p.cached?.pos||concat(p.pos,Float32Array,p.n*3),3);geometry.setAttribute('position',position);geometry.setAttribute('color',new B.Attribute(concat(p.col,Float32Array,p.n*3),3));geometry.setIndex(new B.Attribute(p.cached?.tri||concat(p.tri,Uint32Array,p.nt),1));let mat=new B.Basic({color:base[id],side:B.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,toneMapped:false});presentationMaterial(mat,true);let surface=new B.Mesh(geometry,mat);surface.userData.nativePart=id;part.add(surface);let lg=new B.Geometry();lg.setAttribute('position',position);lg.setIndex(new B.Attribute(p.cached?.lines||concat(p.line,Uint32Array,p.nl),1));let lm=new B.LineMaterial({color:'#163e52',transparent:true,opacity:.78,toneMapped:false});presentationMaterial(lm);part.add(new B.Lines(lg,lm));
  let features=p.cached?.features,exposed=p.cached?.exposed;
- if(!p.cached&&!geometryDetails){features=new Uint32Array(0);exposed=geometry.index.array;}
- else if(!p.cached){features=featureIndices(p.features,p.contacts,position.array);p.features.clear();let hidden=new Uint8Array(p.nt),original=geometry.index.array;
-  for(let face of p.contactFaces)if(coveredContact(face,p.contacts))hidden.fill(1,face.start,face.start+face.count);
-  let indices=new Uint32Array(p.nt),write=0;for(let i=0;i<p.nt;i++)if(!hidden[i])indices[write++]=original[i];exposed=indices.slice(0,write);p.contacts.clear();p.contactFaces=[];
-  rememberTopology(signatures.get(id),{pos:position.array,tri:geometry.index.array,lines:lg.index.array,features,exposed});
+ if(!p.cached){features=geometryDetails?featureIndices(p.features,p.contacts,position.array):new Uint32Array(0);p.features.clear();let skin=exposedSkin(p.faces,p.contacts,geometry.index.array,p.nt,position.array);exposed=skin.exposed;lg.setIndex(new B.Attribute(skin.lines,1));p.contacts.clear();p.faces=[];
+  if(geometryDetails)rememberTopology(signatures.get(id),{pos:position.array,tri:geometry.index.array,lines:lg.index.array,features,exposed});
  }
  let eg=new B.Geometry();eg.setAttribute('position',position);eg.setIndex(new B.Attribute(features,1));
  // Cached topology is keyed by every source mesh and body origin; each case retains its own temperatures.
@@ -177,7 +188,7 @@ async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden
 }
 function dispose(g){if(!g)return;g.traverse(o=>{if(o.userData.nativeGeometry){for(let geometry of [o.userData.nativeGeometry,o.userData.exteriorGeometry])if(geometry!==o.userData.surface.geometry)geometry.dispose();}o.geometry?.dispose();if(o.material)o.material.dispose();});g.removeFromParent();}
 let active=null,loadingKey='',loadedKey='',errorKey='',generation=0,expanded=null,lastState='',gridGeneration=0,gridKey='',previewsRunning=false;
-function mode(group,render){for(let p of group.children){let {part:id,surface,lines}=p.userData;surface.geometry=render==='geometry'?p.userData.exteriorGeometry:p.userData.nativeGeometry;surface.material.vertexColors=render==='temperature';surface.material.color.copy(render==='geometry'?geometryFill[id]:new B.Color(render==='temperature'?'#ffffff':base[id]));surface.material.needsUpdate=true;lines.visible=render==='mesh';p.userData.outline.visible=render==='geometry';p.userData.allowed=(id!==8||$('#native-pore').checked)&&(id!==12||$('#native-cavity').checked);}}
+function mode(group,render){for(let p of group.children){let {part:id,surface,lines}=p.userData;surface.geometry=p.userData.exteriorGeometry;surface.material.vertexColors=render==='temperature';surface.material.color.copy(render==='geometry'?geometryFill[id]:new B.Color(render==='temperature'?'#ffffff':base[id]));surface.material.needsUpdate=true;lines.visible=render==='mesh';p.userData.outline.visible=render==='geometry';p.userData.allowed=(id!==8||$('#native-pore').checked)&&(id!==12||$('#native-cavity').checked);}}
 function trimChunks(){if(chunkCache.size<=12)return;let keep=new Set([...chunkCache.keys()].slice(-8));for(let k of chunkCache.keys())if(!keep.has(k)){chunkCache.delete(k);pending.delete(k);}}
 const models=new Map(),loadMetrics=[];
 async function loadMain(id,scope,patch,key){let token=++generation,start=performance.now();loadingKey=key;errorKey='';status.textContent='Loading exact native FE surface · '+id;status.dataset.state='loading';$('#native-retry').hidden=true;
@@ -305,7 +316,7 @@ window.pm3NativeFrame=()=>{
  const fitKey=s.view==='assembly'&&s.layout==='focused'?[s.caseId,s.layer,Math.round(B.canvas.clientWidth),Math.round(B.canvas.clientHeight)].join('|'):'';
  if(fitKey&&fitKey!==contextFitKey&&active?.visible){let bounds=new B.Box();for(let p of active.children){if(!p.userData.allowed)continue;let box=p.userData.nativeGeometry.boundingBox,scale=p.userData.targetDisplayScale,position=p.userData.targetPosition;for(let x of [box.min.x,box.max.x])for(let y of [box.min.y,box.max.y])for(let z of [box.min.z,box.max.z])bounds.expandByPoint(new B.Vector(x,y,z).multiply(scale).add(position));}B.fitBounds(bounds);contextFitKey=fitKey;}else if(!fitKey)contextFitKey='';
  if(s.mode==='temperature'){$('#field-view-title').textContent='NATIVE NODAL TEMPERATURE · °C';$('#field-view-note').textContent=id+' · paired surface-node values · fixed scale; 80 °C enters warm yellow';}
- if(s.mode==='mesh'){$('#field-view-title').textContent='ACTUAL FE BOUNDARY MESH';$('#field-view-note').textContent=id+' · original face perimeters, including midside nodes; no graphics diagonals';}
+ if(s.mode==='mesh'){$('#field-view-title').textContent='ACTUAL FE EXTERIOR MESH';$('#field-view-note').textContent=id==='0p0_M0'?'M0 is fully solid · locally refined filled partitions are not voids; hidden internal faces removed':id+' · original exterior face perimeters, including midside nodes; hidden internal faces removed';}
  tim2Caption(s);
 };
 function previewLayout(g,scope){
