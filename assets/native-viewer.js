@@ -335,8 +335,26 @@ function previewLayout(g,scope){
 }
 async function renderGrid(render,scope){previewsRunning=true;let token=++gridGeneration,box=$('.native-nine');box.replaceChildren();const ids=['0p0_M0','10p0_F_M2','10p0_F_M3'].flatMap(x=>['coarse','medium','fine'].map(l=>x+'__'+l));for(let id of ids){let c=C.cases.find(c=>c.case_id===id),card=document.createElement('div');card.tabIndex=0;card.setAttribute('role','group');card.className='native-card';card.dataset.caseId=id;card.innerHTML='<strong>'+id.replace('__',' · ')+'</strong><div class="native-preview">Loading native mesh…</div><small>'+c.native_volume_elements.toLocaleString()+' elements · Si peak '+c.native_Si_peak_C.toFixed(4)+' °C</small>';card.onkeydown=e=>{if(e.target===card&&e.key==='Enter')card.onclick()};card.onclick=()=>{expanded=id;generation++;loadingKey='';loadedKey='';refresh();B.centerCamera(scope==='all'?12:7);};box.append(card);}
  let renderer;
- try{renderer=new B.Renderer({antialias:true,alpha:true,preserveDrawingBuffer:true,powerPreference:'low-power'});renderer.setSize(600,340);renderer.outputColorSpace=B.SRGB;let scene=new B.Scene(),camera=new B.Camera(34,600/340,.01,200);
- for(let id of ids){if(token!==gridGeneration)break;let rec=await snapshot(id),g=await build(rec,scope,null,()=>token===gridGeneration,false,render==='geometry');if(token!==gridGeneration){dispose(g);break;}mode(g,render);previewLayout(g,scope);scene.add(g);let bounds=new B.Box().setFromObject(g),center=new B.Vector(),size=new B.Vector();bounds.getCenter(center);bounds.getSize(size);let distance=Math.max(size.x,size.y*1.65,size.z,1)*1.05;camera.position.set(center.x+distance*.65,center.y+distance*.95,center.z+distance);camera.lookAt(center);renderer.render(scene,camera);let img=document.createElement('img');img.src=renderer.domElement.toDataURL('image/png');img.alt=id+' native '+scope+' '+render;box.querySelector('[data-case-id="'+id+'"] .native-preview').replaceChildren(img);dispose(g);trimChunks();await new Promise(r=>setTimeout(r,15));}
+ const slot=id=>box.querySelector('[data-case-id="'+id+'"] .native-preview');
+ const previewImage=id=>{let img=document.createElement('img');img.alt=id+' native '+scope+' '+render;return img;};
+ try{
+ // These snapshots were rendered from the same native surface builder and camera below.
+ // Custom scopes and pore-air views still build from the live data.
+ let remaining=ids;
+ if(scope==='tim1'&&!$('#native-pore').checked){
+  const loaded=await Promise.all(ids.map(async id=>{
+   const img=previewImage(id);
+   img.src='assets/native/sensitivity-previews/'+id+'-'+render+'.png';
+   try{await img.decode();}catch{return false;}
+   if(token===gridGeneration)slot(id).replaceChildren(img);
+   return true;
+  }));
+  if(token!==gridGeneration)return;
+  remaining=ids.filter((id,i)=>!loaded[i]);
+  if(!remaining.length)return;
+ }
+ renderer=new B.Renderer({antialias:true,alpha:true,preserveDrawingBuffer:true,powerPreference:'low-power'});renderer.setSize(600,340);renderer.outputColorSpace=B.SRGB;let scene=new B.Scene(),camera=new B.Camera(34,600/340,.01,200);
+ for(let id of remaining){if(token!==gridGeneration)break;let rec=await snapshot(id),g=await build(rec,scope,null,()=>token===gridGeneration,false,render==='geometry');if(token!==gridGeneration){dispose(g);break;}mode(g,render);previewLayout(g,scope);scene.add(g);let bounds=new B.Box().setFromObject(g),center=new B.Vector(),size=new B.Vector();bounds.getCenter(center);bounds.getSize(size);let distance=Math.max(size.x,size.y*1.65,size.z,1)*1.05;camera.position.set(center.x+distance*.65,center.y+distance*.95,center.z+distance);camera.lookAt(center);renderer.render(scene,camera);let img=previewImage(id);img.src=renderer.domElement.toDataURL('image/png');slot(id).replaceChildren(img);dispose(g);trimChunks();await new Promise(r=>setTimeout(r,15));}
  }catch(e){if(token!==gridGeneration)return;console.error(e);let slot=box.querySelector('.native-preview:not(:has(img))');if(slot)slot.textContent='Could not load native data: '+e.message;gridKey='error';}finally{renderer?.dispose();renderer?.forceContextLoss();previewsRunning=false;if(token!==gridGeneration)gridKey='';}
 }
 let pointerStart=null;B.canvas.addEventListener('pointerdown',e=>{pointerStart=[e.clientX,e.clientY]});B.canvas.addEventListener('pointerup',e=>{if(!active||!root.visible||!pointerStart||Math.hypot(e.clientX-pointerStart[0],e.clientY-pointerStart[1])>5)return;let r=B.canvas.getBoundingClientRect(),ray=new B.Raycaster();ray.setFromCamera(new B.Vector2((e.clientX-r.left)/r.width*2-1,1-(e.clientY-r.top)/r.height*2),B.camera);let surfaces=active.visible?active.children.filter(p=>p.visible&&p.userData.fade>.5).map(p=>p.userData.surface):[];if(tim2Overlay?.visible&&tim2Fade>.5)surfaces.push(...(B.state().mode==='geometry'?[tim2Overlay.userData.surface]:tim2Overlay.userData.native.children.filter(p=>p.visible).map(p=>p.userData.surface)));let current=B.state(),hits=ray.intersectObjects(surfaces,false),hit=(current.view==='assembly'&&current.layer!=='all'?hits.find(h=>(h.object.userData.interfaceLayer||partLayer[h.object.userData.nativePart])===current.layer):null)||hits[0];if(!hit)return;if(hit.object.userData.interfaceLayer==='tim2'){B.selectLayer('tim2');return;}let id=hit.object.userData.nativePart,layer=partLayer[id],s=B.state();if(s.view==='mesh-study')return;if(layer==='tim1'&&s.layer==='tim1'&&s.patchBounds){let point=hit.object.parent.worldToLocal(hit.point.clone()),x=point.x*5,y=-point.z*5,b=s.patchBounds;if(x>=b[0]&&x<=b[1]&&y>=b[2]&&y<=b[3]){B.isolatePatch();return;}}if(layer&&layer!=='cavity')B.selectLayer(layer);},true);
