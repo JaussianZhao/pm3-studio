@@ -44,7 +44,15 @@ function presentationMaterial(material,shade=false){
 const chunkCache=new Map(),pending=new Map();
 window.PM3_NATIVE_CHUNK=(name,data)=>{chunkCache.set(name,data);if(pending.has(name))pending.get(name).resolve(data);};
 async function record(id){let name=C.index[id];if(!name)throw Error('Missing native record: '+id);if(chunkCache.has(name))return chunkCache.get(name)[id];if(!pending.has(name)){let resolve,reject,promise=new Promise((a,b)=>{resolve=a;reject=b});pending.set(name,{promise,resolve,reject});let script=document.createElement('script');script.src='assets/native/'+name;script.onload=()=>{script.remove();if(!chunkCache.has(name)){pending.delete(name);reject(Error('Empty dataset '+name));}};script.onerror=()=>{script.remove();pending.delete(name);reject(Error('Could not load assets/native/'+name));};document.head.append(script);}let data=await pending.get(name).promise;return data[id];}
-async function inflate(rec){let bytes=Uint8Array.from(atob(rec.data),c=>c.charCodeAt(0));return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer();}
+async function inflate(rec){
+ let bytes;
+ if(Uint8Array.fromBase64)bytes=Uint8Array.fromBase64(rec.data);
+ else{let binary=atob(rec.data);bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);}
+ const stream=new DecompressionStream('deflate'),writer=stream.writable.getWriter();
+ const buffer=new Response(stream.readable).arrayBuffer();
+ await Promise.all([writer.write(bytes).then(()=>writer.close()),buffer]);
+ return buffer;
+}
 // Reuse decoded records across cases; bound memory on tablets and share in-flight work.
 const decoded=new Map();let decodedBytes=0;
 async function decode(id,kind){let hit=decoded.get(id);if(hit){decoded.delete(id);decoded.set(id,hit);return hit.promise;}
@@ -56,8 +64,9 @@ async function prefetch(bodies,parts,isCurrent){let ids=[...new Map(bodies.flatM
  await Promise.all(Array.from({length:Math.min(4,ids.length)},async()=>{while(next<ids.length&&isCurrent())await record(ids[next++]);}));
 }
 async function snapshot(id){let v=JSON.parse(new TextDecoder().decode(await inflate(await record(id))));if(v.case_id!==id)throw Error('Native case mismatch');return v;}
-function mesh(raw){let d=new DataView(raw);if(new TextDecoder().decode(new Uint8Array(raw,0,8))!=='EPTCMSH1')throw Error('Invalid mesh');let n=d.getUint32(8,true),f=d.getUint32(12,true),e=d.getUint32(16,true),p=20;const read=(type,len)=>{let a=new type(len);for(let i=0;i<len;i++,p+=4)a[i]=type===Int32Array?d.getInt32(p,true):d.getUint32(p,true);return a;};let q=read(Int32Array,n*3),offsets=read(Uint32Array,f+1),indices=read(Uint32Array,e);if(p!==raw.byteLength||offsets[f]!==e)throw Error('Mesh length mismatch');return{n,f,q,offsets,indices};}
+function mesh(raw){let d=new DataView(raw);if(new TextDecoder().decode(new Uint8Array(raw,0,8))!=='EPTCMSH1')throw Error('Invalid mesh');let n=d.getUint32(8,true),f=d.getUint32(12,true),e=d.getUint32(16,true),positionsEnd=20+n*12,offsetsEnd=positionsEnd+(f+1)*4;if(offsetsEnd+e*4!==raw.byteLength)throw Error('Mesh length mismatch');let q=new Int32Array(raw,20,n*3),offsets=new Uint32Array(raw,positionsEnd,f+1),indices=new Uint32Array(raw,offsetsEnd,e);if(offsets[f]!==e)throw Error('Mesh length mismatch');return{n,f,q,offsets,indices};}
 function temperature(raw){let d=new DataView(raw);if(new TextDecoder().decode(new Uint8Array(raw,0,8))!=='EPTCTMP2')throw Error('Invalid temperature');let n=d.getUint32(8,true),a=new Float32Array(n),t=0;for(let i=0;i<n;i++){t+=d.getInt32(12+i*4,true);a[i]=t/1000;}if(raw.byteLength!==12+n*4)throw Error('Temperature length mismatch');return a;}
+const featureAngleCos=Math.cos(Math.PI/5);
 const patterns={3:[0,1,2],4:[0,1,2,0,2,3],6:[0,1,5,1,2,3,5,3,4,1,3,5],8:[0,1,7,1,2,3,3,4,5,5,6,7,1,3,7,3,5,7]};
 function addFeatureFace(edges,indices,keys,pos,start,end,offset,contacts=null,range=null){
  let contactFace=null,normal=new B.Vector(),vertices=[];
@@ -84,8 +93,8 @@ function addFeatureFace(edges,indices,keys,pos,start,end,offset,contacts=null,ra
   let a=vertices[j],b=vertices[(j+1)%vertices.length],ka=keys[a],kb=keys[b];
   if(ka===kb)continue;
   let key=ka<kb?ka+'|'+kb:kb+'|'+ka,edge=edges.get(key);
-  if(edge){edge.count++;edge.sharp ||= Math.abs(edge.normal.dot(normal))<Math.cos(Math.PI/5);}
-  else edges.set(key,{a:offset+a,b:offset+b,normal:normal.clone(),count:1,sharp:false});
+  if(edge){edge.count++;edge.sharp ||= Math.abs(edge.normal.dot(normal))<featureAngleCos;}
+  else edges.set(key,{a:offset+a,b:offset+b,normal,count:1,sharp:false});
  }
  return contactFace;
 }
@@ -138,13 +147,21 @@ function exposedSkin(faces,contacts,original,count,positions){
  const byFace=new Map(),hidden=new Uint8Array(count);
  for(let face of faces){let previous=byFace.get(face.key);if(previous){hidden.fill(1,previous.start,previous.start+previous.count);hidden.fill(1,face.start,face.start+face.count);}else byFace.set(face.key,face);}
  for(let face of faces)if(!hidden[face.start]&&face.contact&&coveredContact(face.contact,contacts))hidden.fill(1,face.start,face.start+face.count);
- let exposed=[],lines=[],seen=new Set(),keys=[];
- const vertexKey=i=>keys[i]??(keys[i]=[positions[i*3],positions[i*3+1],positions[i*3+2]].map(x=>Math.round(x*5e6)).join(','));
- for(let face of faces)if(!hidden[face.start]){
-  for(let i=face.start;i<face.start+face.count;i++)exposed.push(original[i]);
-  for(let i=0;i<face.vertices.length;i++){let a=face.vertices[i],b=face.vertices[(i+1)%face.vertices.length],ka=vertexKey(a),kb=vertexKey(b),key=ka<kb?ka+'|'+kb:kb+'|'+ka;if(!seen.has(key)){seen.add(key);lines.push(a,b);}}
+ const exposed=new Uint32Array(count),lines=[],seen=new Set(),vertexIds=new Map();
+ const stride=positions.length/3,ids=new Uint32Array(stride);
+ let length=0;
+ function vertexId(i){
+  if(ids[i])return ids[i];
+  let x=Math.round(positions[i*3]*5e6),y=Math.round(positions[i*3+1]*5e6),z=Math.round(positions[i*3+2]*5e6),key=x+','+y+','+z;
+  let id=vertexIds.get(key);
+  if(id===undefined){id=vertexIds.size+1;vertexIds.set(key,id);}
+  return ids[i]=id;
  }
- return{exposed:new Uint32Array(exposed),lines:new Uint32Array(lines)};
+ for(let face of faces)if(!hidden[face.start]){
+  for(let i=face.start;i<face.start+face.count;i++)exposed[length++]=original[i];
+  for(let i=0;i<face.vertices.length;i++){let a=face.vertices[i],b=face.vertices[(i+1)%face.vertices.length],ka=vertexId(a)-1,kb=vertexId(b)-1,key=Math.min(ka,kb)*stride+Math.max(ka,kb);if(!seen.has(key)){seen.add(key);lines.push(a,b);}}
+ }
+ return{exposed:length===count?exposed:exposed.slice(0,length),lines:new Uint32Array(lines)};
 }
 const topologyCache=new Map();let topologyBytes=0;
 function rememberTopology(key,value){if(!key)return;value.bytes=[value.pos,value.tri,value.lines,value.features,value.exposed].reduce((n,a)=>n+a.byteLength,0);topologyBytes+=value.bytes-(topologyCache.get(key)?.bytes??0);topologyCache.set(key,value);for(let [oldKey,old]of topologyCache){if(topologyBytes<=24*1024*1024)break;topologyCache.delete(oldKey);topologyBytes-=old.bytes;}}
@@ -162,7 +179,7 @@ async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden
   if(!geometries.has(body.mesh))geometries.set(body.mesh,await decode(body.mesh,'mesh'));
   let g=geometries.get(body.mesh);
   let range={min:[Infinity,Infinity,Infinity],max:[-Infinity,-Infinity,-Infinity]},keys=new Array(g.n),pos=new Float32Array(g.n*3),xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
-  for(let i=0;i<g.n;i++){if(keys)keys[i]=[g.q[i*3]+body.origin_q[0],g.q[i*3+1]+body.origin_q[1],g.q[i*3+2]+body.origin_q[2]].join(',');let x=(g.q[i*3]+body.origin_q[0])/1e6,y=(g.q[i*3+1]+body.origin_q[1])/1e6,z=(g.q[i*3+2]+body.origin_q[2])/1e6;pos[i*3]=x/5;pos[i*3+1]=z/5;pos[i*3+2]=-y/5;for(let a=0;a<3;a++){range.min[a]=Math.min(range.min[a],pos[i*3+a]);range.max[a]=Math.max(range.max[a],pos[i*3+a]);}xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);}
+  for(let i=0;i<g.n;i++){let qx=g.q[i*3]+body.origin_q[0],qy=g.q[i*3+1]+body.origin_q[1],qz=g.q[i*3+2]+body.origin_q[2];keys[i]=qx+','+qy+','+qz;let x=qx/1e6,y=qy/1e6,z=qz/1e6;pos[i*3]=x/5;pos[i*3+1]=z/5;pos[i*3+2]=-y/5;for(let a=0;a<3;a++){range.min[a]=Math.min(range.min[a],pos[i*3+a]);range.max[a]=Math.max(range.max[a],pos[i*3+a]);}xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);}
   if(patch&&(xmax<patch[0]+1e-5||xmin>patch[1]-1e-5||ymax<patch[2]+1e-5||ymin>patch[3]-1e-5))continue;
   if(!temps.has(body.temperatures))temps.set(body.temperatures,await decode(body.temperatures,'temperature'));let t=temps.get(body.temperatures);if(t.length!==g.n||g.n!==body.surface_vertices)throw Error('Native mesh/temperature pairing mismatch');
   if(!parts.has(body.part))parts.set(body.part,{pos:[],col:[],tri:[],features:new Map(),contacts:new Map(),faces:[],n:0,nt:0});let p=parts.get(body.part),col=colors(t);
