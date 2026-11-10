@@ -54,6 +54,7 @@ function target(p){let layer=p.userData.layer,center=T.group.userData.anchors[la
 function fit(){if(!T.group||T.loading)return;let bounds=new B.Box();for(let p of T.group.children){if(T.isolated&&p.userData.layer!==T.layer)continue;let box=p.userData.nativeGeometry.boundingBox,position=target(p);for(let x of [box.min.x,box.max.x])for(let y of [box.min.y,box.max.y])for(let z of [box.min.z,box.max.z])bounds.expandByPoint(new B.Vector(x,y,z).add(position));}B.fitBounds(bounds.expandByScalar(!T.isolated&&T.layout!=='closed'?3:.6));fitPending=false;}
 let sizeKey='';
 function frame(alpha){root.visible=T.active;status.hidden=!T.active;if(!T.active)return;sync();if(!T.group||T.loading)return;
+ if(T.isolated)alpha=N.isolationStep(alpha);
  const mode=B.state().mode;if(modeKey!==mode){N.mode(T.group,mode);modeKey=mode;}
  for(let p of T.group.children){let layer=p.userData.layer,wanted=T.isolated&&layer!==T.layer?0:1,fade=p.userData.fade??1;fade+=(wanted-fade)*alpha;if(Math.abs(fade-wanted)<.005)fade=wanted;p.userData.fade=fade;p.visible=fade>0;p.position.lerp(target(p),alpha);p.scale.set(1,1,1);N.present(p,T.layout==='focused'&&T.layer!=='all'&&layer!==T.layer,alpha);
  }
