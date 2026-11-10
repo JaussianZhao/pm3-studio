@@ -33,3 +33,5 @@
 .tm-active #scene-container .tm-status{z-index:4}
 @media(pointer:coarse){.model-family-switch button{min-height:44px}}
 #tm-inspector p,#tm-inspector .tm-detail-row strong{overflow-wrap:anywhere;min-width:0}
+
+.tm-result-figures{display:none}.tm-active .tm-result-figures{display:block;padding:0 22px 18px;font-size:13px;color:#31576b}.tm-result-figures summary{cursor:pointer;font-weight:700}.tm-result-figures a{color:#245d76}

@@ -43,7 +43,7 @@ function presentationMaterial(material,shade=false){
 }
 const chunkCache=new Map(),pending=new Map();
 window.PM3_NATIVE_CHUNK=(name,data)=>{chunkCache.set(name,data);if(pending.has(name))pending.get(name).resolve(data);};
-async function record(id){let name=C.index[id];if(!name)throw Error('Missing native record: '+id);if(chunkCache.has(name))return chunkCache.get(name)[id];if(!pending.has(name)){let resolve,reject,promise=new Promise((a,b)=>{resolve=a;reject=b});pending.set(name,{promise,resolve,reject});let script=document.createElement('script');script.src='assets/native/'+name;script.onload=()=>{script.remove();if(!chunkCache.has(name))reject(Error('Empty dataset '+name));};script.onerror=()=>{script.remove();pending.delete(name);reject(Error('Could not load assets/native/'+name));};document.head.append(script);}let data=await pending.get(name).promise;return data[id];}
+async function record(id){let name=C.index[id];if(!name)throw Error('Missing native record: '+id);if(chunkCache.has(name))return chunkCache.get(name)[id];if(!pending.has(name)){let resolve,reject,promise=new Promise((a,b)=>{resolve=a;reject=b});pending.set(name,{promise,resolve,reject});let script=document.createElement('script');script.src='assets/native/'+name;script.onload=()=>{script.remove();if(!chunkCache.has(name)){pending.delete(name);reject(Error('Empty dataset '+name));}};script.onerror=()=>{script.remove();pending.delete(name);reject(Error('Could not load assets/native/'+name));};document.head.append(script);}let data=await pending.get(name).promise;return data[id];}
 async function inflate(rec){let bytes=Uint8Array.from(atob(rec.data),c=>c.charCodeAt(0));return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer();}
 // Reuse decoded records across cases; bound memory on tablets and share in-flight work.
 const decoded=new Map();let decodedBytes=0;
@@ -52,8 +52,8 @@ async function decode(id,kind){let hit=decoded.get(id);if(hit){decoded.delete(id
   for(let [key,item]of decoded){if(decodedBytes<=48*1024*1024)break;if(key!==id&&item.bytes){decoded.delete(key);decodedBytes-=item.bytes;}}
   return value;})().catch(e=>{decoded.delete(id);throw e;});decoded.set(id,entry);return entry.promise;
 }
-async function prefetch(bodies){let ids=[...new Map(bodies.flatMap(b=>[[C.index[b.mesh],b.mesh],[C.index[b.temperatures],b.temperatures]])).values()],next=0;
- await Promise.all(Array.from({length:Math.min(4,ids.length)},async()=>{while(next<ids.length)await record(ids[next++]);}));
+async function prefetch(bodies,parts,isCurrent){let ids=[...new Map(bodies.flatMap(b=>{let ids=parts.get(b.part)?.cached?[b.temperatures]:[b.mesh,b.temperatures];return ids.map(id=>[C.index[id],id]);})).values()],next=0;
+ await Promise.all(Array.from({length:Math.min(4,ids.length)},async()=>{while(next<ids.length&&isCurrent())await record(ids[next++]);}));
 }
 async function snapshot(id){let v=JSON.parse(new TextDecoder().decode(await inflate(await record(id))));if(v.case_id!==id)throw Error('Native case mismatch');return v;}
 function mesh(raw){let d=new DataView(raw);if(new TextDecoder().decode(new Uint8Array(raw,0,8))!=='EPTCMSH1')throw Error('Invalid mesh');let n=d.getUint32(8,true),f=d.getUint32(12,true),e=d.getUint32(16,true),p=20;const read=(type,len)=>{let a=new type(len);for(let i=0;i<len;i++,p+=4)a[i]=type===Int32Array?d.getInt32(p,true):d.getUint32(p,true);return a;};let q=read(Int32Array,n*3),offsets=read(Uint32Array,f+1),indices=read(Uint32Array,e);if(p!==raw.byteLength||offsets[f]!==e)throw Error('Mesh length mismatch');return{n,f,q,offsets,indices};}
@@ -79,6 +79,7 @@ function addFeatureFace(edges,indices,keys,pos,start,end,offset,contacts=null,ra
    }
   }
  }
+ if(!edges)return contactFace;
  for(let j=0;j<vertices.length;j++){
   let a=vertices[j],b=vertices[(j+1)%vertices.length],ka=keys[a],kb=keys[b];
   if(ka===kb)continue;
@@ -137,8 +138,8 @@ function exposedSkin(faces,contacts,original,count,positions){
  const byFace=new Map(),hidden=new Uint8Array(count);
  for(let face of faces){let previous=byFace.get(face.key);if(previous){hidden.fill(1,previous.start,previous.start+previous.count);hidden.fill(1,face.start,face.start+face.count);}else byFace.set(face.key,face);}
  for(let face of faces)if(!hidden[face.start]&&face.contact&&coveredContact(face.contact,contacts))hidden.fill(1,face.start,face.start+face.count);
- let exposed=[],lines=[],seen=new Set();
- const vertexKey=i=>[positions[i*3],positions[i*3+1],positions[i*3+2]].map(x=>Math.round(x*5e6)).join(',');
+ let exposed=[],lines=[],seen=new Set(),keys=[];
+ const vertexKey=i=>keys[i]??(keys[i]=[positions[i*3],positions[i*3+1],positions[i*3+2]].map(x=>Math.round(x*5e6)).join(','));
  for(let face of faces)if(!hidden[face.start]){
   for(let i=face.start;i<face.start+face.count;i++)exposed.push(original[i]);
   for(let i=0;i<face.vertices.length;i++){let a=face.vertices[i],b=face.vertices[(i+1)%face.vertices.length],ka=vertexKey(a),kb=vertexKey(b),key=ka<kb?ka+'|'+kb:kb+'|'+ka;if(!seen.has(key)){seen.add(key);lines.push(a,b);}}
@@ -146,12 +147,13 @@ function exposedSkin(faces,contacts,original,count,positions){
  return{exposed:new Uint32Array(exposed),lines:new Uint32Array(lines)};
 }
 const topologyCache=new Map();let topologyBytes=0;
-function rememberTopology(key,value){if(!key)return;value.bytes=[value.pos,value.tri,value.lines,value.features,value.exposed].reduce((n,a)=>n+a.byteLength,0);topologyCache.set(key,value);topologyBytes+=value.bytes;for(let [oldKey,old]of topologyCache){if(topologyBytes<=24*1024*1024)break;topologyCache.delete(oldKey);topologyBytes-=old.bytes;}}
+function rememberTopology(key,value){if(!key)return;value.bytes=[value.pos,value.tri,value.lines,value.features,value.exposed].reduce((n,a)=>n+a.byteLength,0);topologyBytes+=value.bytes-(topologyCache.get(key)?.bytes??0);topologyCache.set(key,value);for(let [oldKey,old]of topologyCache){if(topologyBytes<=24*1024*1024)break;topologyCache.delete(oldKey);topologyBytes-=old.bytes;}}
 async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden=false,geometryDetails=true){
  const geometries=new Map(),temps=new Map(),parts=new Map();
- const bodies=rec.bodies.filter(body=>(scope==='all'||scope===partLayer[body.part])&&(includeHidden||(body.part!==8||$('#native-pore').checked)&&(body.part!==12||$('#native-cavity').checked)));await prefetch(bodies);let processed=0;
+ const bodies=rec.bodies.filter(body=>(scope==='all'||scope===partLayer[body.part])&&(includeHidden||(body.part!==8||$('#native-pore').checked)&&(body.part!==12||$('#native-cavity').checked)));let processed=0;
  const signatures=new Map();if(!patch)for(let body of bodies)signatures.set(body.part,(signatures.get(body.part)||body.part+':')+body.mesh+'@'+body.origin_q.join(',')+';');
  for(let [part,key]of signatures){let cached=topologyCache.get(key);if(cached){topologyCache.delete(key);topologyCache.set(key,cached);parts.set(part,{cached,col:[],n:0});}}
+ await prefetch(bodies,parts,isCurrent);
 
  for(let body of bodies){
   if(!isCurrent())throw Error('Superseded native model load');
@@ -163,13 +165,13 @@ async function build(rec,scope='all',patch=null,isCurrent=()=>true,includeHidden
   for(let i=0;i<g.n;i++){if(keys)keys[i]=[g.q[i*3]+body.origin_q[0],g.q[i*3+1]+body.origin_q[1],g.q[i*3+2]+body.origin_q[2]].join(',');let x=(g.q[i*3]+body.origin_q[0])/1e6,y=(g.q[i*3+1]+body.origin_q[1])/1e6,z=(g.q[i*3+2]+body.origin_q[2])/1e6;pos[i*3]=x/5;pos[i*3+1]=z/5;pos[i*3+2]=-y/5;for(let a=0;a<3;a++){range.min[a]=Math.min(range.min[a],pos[i*3+a]);range.max[a]=Math.max(range.max[a],pos[i*3+a]);}xmin=Math.min(xmin,x);xmax=Math.max(xmax,x);ymin=Math.min(ymin,y);ymax=Math.max(ymax,y);}
   if(patch&&(xmax<patch[0]+1e-5||xmin>patch[1]-1e-5||ymax<patch[2]+1e-5||ymin>patch[3]-1e-5))continue;
   if(!temps.has(body.temperatures))temps.set(body.temperatures,await decode(body.temperatures,'temperature'));let t=temps.get(body.temperatures);if(t.length!==g.n||g.n!==body.surface_vertices)throw Error('Native mesh/temperature pairing mismatch');
-  if(!parts.has(body.part))parts.set(body.part,{pos:[],col:[],tri:[],line:[],features:new Map(),contacts:new Map(),faces:[],n:0,nt:0,nl:0});let p=parts.get(body.part),col=colors(t);
-  let triangles=[],lines=[],seen=new Set();for(let f=0;f<g.f;f++){let start=g.offsets[f],end=g.offsets[f+1],len=end-start,pat=patterns[len];if(!pat)throw Error('Unsupported native face width '+len);let contact=geometryDetails?addFeatureFace(p.features,g.indices,keys,pos,start,end,p.n,p.contacts,range):null,vertices=Array.from(g.indices.subarray(start,end));p.faces.push({key:vertices.map(i=>keys[i]).sort().join('|'),vertices:vertices.map(i=>p.n+i),start:p.nt+triangles.length,count:pat.length,contact});for(let v of pat)triangles.push(p.n+g.indices[start+v]);for(let i=start;i<end;i++){let a=g.indices[i],b=g.indices[i+1<end?i+1:start],key=Math.min(a,b)*g.n+Math.max(a,b);if(!seen.has(key)){seen.add(key);lines.push(p.n+a,p.n+b);}}}
-  p.pos.push(pos);p.col.push(col);p.tri.push(new Uint32Array(triangles));p.line.push(new Uint32Array(lines));p.n+=g.n;p.nt+=triangles.length;p.nl+=lines.length;
+  if(!parts.has(body.part))parts.set(body.part,{pos:[],col:[],tri:[],features:new Map(),contacts:new Map(),faces:[],n:0,nt:0});let p=parts.get(body.part),col=colors(t);
+  let triangles=[];for(let f=0;f<g.f;f++){let start=g.offsets[f],end=g.offsets[f+1],len=end-start,pat=patterns[len];if(!pat)throw Error('Unsupported native face width '+len);let contact=addFeatureFace(geometryDetails?p.features:null,g.indices,keys,pos,start,end,p.n,p.contacts,range),vertices=Array.from(g.indices.subarray(start,end));p.faces.push({key:vertices.map(i=>keys[i]).sort().join('|'),vertices:vertices.map(i=>p.n+i),start:p.nt+triangles.length,count:pat.length,contact});for(let v of pat)triangles.push(p.n+g.indices[start+v]);}
+  p.pos.push(pos);p.col.push(col);p.tri.push(new Uint32Array(triangles));p.n+=g.n;p.nt+=triangles.length;
   if(++processed%12===0)await new Promise(resolve=>setTimeout(resolve,0));
  }
  let group=new B.Group();group.userData.caseId=rec.case_id;group.userData.snapshot=rec;
- for(let [id,p]of parts){let part=new B.Group(),geometry=new B.Geometry(),position=new B.Attribute(p.cached?.pos||concat(p.pos,Float32Array,p.n*3),3);geometry.setAttribute('position',position);geometry.setAttribute('color',new B.Attribute(concat(p.col,Float32Array,p.n*3),3));geometry.setIndex(new B.Attribute(p.cached?.tri||concat(p.tri,Uint32Array,p.nt),1));let mat=new B.Basic({color:base[id],side:B.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,toneMapped:false});presentationMaterial(mat,true);let surface=new B.Mesh(geometry,mat);surface.userData.nativePart=id;part.add(surface);let lg=new B.Geometry();lg.setAttribute('position',position);lg.setIndex(new B.Attribute(p.cached?.lines||concat(p.line,Uint32Array,p.nl),1));let lm=new B.LineMaterial({color:'#163e52',transparent:true,opacity:.78,toneMapped:false});presentationMaterial(lm);part.add(new B.Lines(lg,lm));
+ for(let [id,p]of parts){let part=new B.Group(),geometry=new B.Geometry(),position=new B.Attribute(p.cached?.pos||concat(p.pos,Float32Array,p.n*3),3);geometry.setAttribute('position',position);geometry.setAttribute('color',new B.Attribute(concat(p.col,Float32Array,p.n*3),3));geometry.setIndex(new B.Attribute(p.cached?.tri||concat(p.tri,Uint32Array,p.nt),1));let mat=new B.Basic({color:base[id],side:B.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1,toneMapped:false});presentationMaterial(mat,true);let surface=new B.Mesh(geometry,mat);surface.userData.nativePart=id;part.add(surface);let lg=new B.Geometry();lg.setAttribute('position',position);if(p.cached)lg.setIndex(new B.Attribute(p.cached.lines,1));let lm=new B.LineMaterial({color:'#163e52',transparent:true,opacity:.78,depthWrite:false,toneMapped:false});presentationMaterial(lm);part.add(new B.Lines(lg,lm));
  let features=p.cached?.features,exposed=p.cached?.exposed;
  if(!p.cached){features=geometryDetails?featureIndices(p.features,p.contacts,position.array):new Uint32Array(0);p.features.clear();let skin=exposedSkin(p.faces,p.contacts,geometry.index.array,p.nt,position.array);exposed=skin.exposed;lg.setIndex(new B.Attribute(skin.lines,1));p.contacts.clear();p.faces=[];
   if(geometryDetails)rememberTopology(signatures.get(id),{pos:position.array,tri:geometry.index.array,lines:lg.index.array,features,exposed});
@@ -234,13 +236,16 @@ function layout(group,s,alpha){
   if(Math.abs(p.userData.fade-target)<.005)p.userData.fade=target;
   p.visible=p.userData.fade>0;
   const ghost=s.layer!=='all'&&layer!==s.layer&&(s.layout==='focused'||s.view!=='assembly');
+  present(p,ghost,alpha);
+ }
+}
+function present(p,ghost,alpha){
   let opacity=p.userData.presentationAlpha??1,targetOpacity=ghost?.18:1;opacity+=(targetOpacity-opacity)*alpha;if(Math.abs(opacity-targetOpacity)<.005)opacity=targetOpacity;p.userData.presentationAlpha=opacity;
   let material=p.userData.surface.material,transparent=opacity<.995;if(material.transparent!==transparent){material.transparent=transparent;material.needsUpdate=true;}
   material.opacity=opacity;material.depthWrite=!transparent;material.forceSinglePass=true;
   let outlineMaterial=p.userData.outline.material;outlineMaterial.opacity=ghost?opacity*.55:opacity;let outlineTransparent=ghost||opacity<.995;if(outlineMaterial.transparent!==outlineTransparent){outlineMaterial.transparent=outlineTransparent;outlineMaterial.needsUpdate=true;}
   p.userData.lines.material.opacity=.78*opacity;
   for(let child of p.children)child.material.userData.fade.value=p.userData.fade;
- }
 }
 // TIM2 is an equivalent contact: render its adjacent native solid faces, never a fabricated volume mesh.
 let tim2Overlay=null,tim2Source=null,tim2Fade=0,tim2Display='';
@@ -297,7 +302,7 @@ let contextFitKey='',expandedFitKey='';
 let previousFrame=performance.now();
 window.pm3NativeFrame=()=>{
  let now=performance.now(),alpha=reducedMotion.matches?1:1-Math.exp(-Math.min(now-previousFrame,250)/110);previousFrame=now;
- if(window.PM3Thermomechanical?.active){root.visible=false;B.original.visible=false;grid.hidden=true;controls.hidden=true;status.hidden=true;window.PM3Thermomechanical.frame(alpha);return;}
+ if(window.PM3Thermomechanical?.active){if(loadingKey){generation++;loadingKey='';}if(!grid.hidden){gridGeneration++;gridKey='';}root.visible=false;B.original.visible=false;grid.hidden=true;controls.hidden=true;status.hidden=true;window.PM3Thermomechanical.frame(alpha);return;}
  let s=B.state();if(s.view!=='mesh-study'&&expanded){expanded=null;gridGeneration++;if(s.view==='assembly'&&s.layout==='closed')B.showAssembly(true);}
  contactControl.hidden=s.layer!=='tim2'||s.mode==='geometry'||s.view==='mesh-study'||s.view==='m1-study';
  let study=s.view==='mesh-study'&&!expanded;grid.hidden=!study;$('#native-grid-back').hidden=!expanded;controls.hidden=s.view==='m1-study';status.hidden=study||s.view==='m1-study';
@@ -309,7 +314,7 @@ window.pm3NativeFrame=()=>{
  let id=expanded||s.caseId,patch=s.view==='patch-solo'?s.patchBounds:null,key=[id,scope,JSON.stringify(patch)].join('|')+($('#native-pore').checked?'|pore':'')+($('#native-cavity').checked?'|cavity':'');
  if(loadingKey&&loadingKey!==key){generation++;loadingKey='';}
  if(key!==loadedKey&&key!==loadingKey&&key!==errorKey)loadMain(id,scope,patch,key);
- if(active){active.visible=loadedKey===key;if(active.visible&&s.layer!=='tim2'&&!loadingKey&&(status.dataset.caseId!==id||status.dataset.state!=='ready')){let rec=active.userData.snapshot;status.textContent=id+' · '+rec.native_mesh_nodes.toLocaleString()+' nodes · '+rec.native_volume_elements.toLocaleString()+' volume elements';status.dataset.state='ready';status.dataset.caseId=id;}let ms=s.mode+'|'+$('#native-pore').checked+'|'+$('#native-cavity').checked;if(ms!==lastState){mode(active,s.mode);lastState=ms;}if(expanded){for(let p of active.children){p.visible=p.userData.allowed;for(let c of p.children)c.material.userData.fade.value=1;p.position.set(0,-active.userData.anchors[p.userData.layer],0);p.scale.set(1,1,1);}if(scope==='all')previewLayout(active,'all');}else layout(active,s,alpha);}
+ if(active){active.visible=loadedKey===key;if(active.visible&&s.layer!=='tim2'&&!loadingKey&&(status.dataset.caseId!==id||status.dataset.state!=='ready')){let rec=active.userData.snapshot;status.textContent=id+' · '+rec.native_mesh_nodes.toLocaleString()+' nodes · '+rec.native_volume_elements.toLocaleString()+' volume elements';status.dataset.state='ready';status.dataset.caseId=id;}let ms=s.mode+'|'+$('#native-pore').checked+'|'+$('#native-cavity').checked;if(ms!==lastState){mode(active,s.mode);lastState=ms;}if(expanded){for(let p of active.children){p.visible=p.userData.allowed;p.userData.fade=1;present(p,false,1);p.position.set(0,-active.userData.anchors[p.userData.layer],0);p.scale.set(1,1,1);}if(scope==='all')previewLayout(active,'all');}else layout(active,s,alpha);}
  updateTim2(s,alpha);
  if(expanded&&$('#field-view-caption').hidden!==(s.mode==='geometry'))$('#field-view-caption').hidden=s.mode==='geometry';
  const previewFit=expanded&&active?.visible&&!loadingKey?[loadedKey,B.canvas.clientWidth,B.canvas.clientHeight].join('|'):'';if(previewFit&&previewFit!==expandedFitKey){active.updateMatrixWorld(true);B.fitBounds(new B.Box().setFromObject(active));expandedFitKey=previewFit;}else if(!previewFit)expandedFitKey='';
@@ -337,5 +342,5 @@ async function renderGrid(render,scope){previewsRunning=true;let token=++gridGen
 let pointerStart=null;B.canvas.addEventListener('pointerdown',e=>{pointerStart=[e.clientX,e.clientY]});B.canvas.addEventListener('pointerup',e=>{if(!active||!root.visible||!pointerStart||Math.hypot(e.clientX-pointerStart[0],e.clientY-pointerStart[1])>5)return;let r=B.canvas.getBoundingClientRect(),ray=new B.Raycaster();ray.setFromCamera(new B.Vector2((e.clientX-r.left)/r.width*2-1,1-(e.clientY-r.top)/r.height*2),B.camera);let surfaces=active.visible?active.children.filter(p=>p.visible&&p.userData.fade>.5).map(p=>p.userData.surface):[];if(tim2Overlay?.visible&&tim2Fade>.5)surfaces.push(...(B.state().mode==='geometry'?[tim2Overlay.userData.surface]:tim2Overlay.userData.native.children.filter(p=>p.visible).map(p=>p.userData.surface)));let current=B.state(),hits=ray.intersectObjects(surfaces,false),hit=(current.view==='assembly'&&current.layer!=='all'?hits.find(h=>(h.object.userData.interfaceLayer||partLayer[h.object.userData.nativePart])===current.layer):null)||hits[0];if(!hit)return;if(hit.object.userData.interfaceLayer==='tim2'){B.selectLayer('tim2');return;}let id=hit.object.userData.nativePart,layer=partLayer[id],s=B.state();if(s.view==='mesh-study')return;if(layer==='tim1'&&s.layer==='tim1'&&s.patchBounds){let point=hit.object.parent.worldToLocal(hit.point.clone()),x=point.x*5,y=-point.z*5,b=s.patchBounds;if(x>=b[0]&&x<=b[1]&&y>=b[2]&&y<=b[3]){B.isolatePatch();return;}}if(layer&&layer!=='cavity')B.selectLayer(layer);},true);
 const style=document.createElement('style');style.textContent=`.native-status{position:absolute;top:10px;left:14px;right:14px;z-index:4;font:10px monospace;color:#31576b;pointer-events:none}.native-status[data-state=error]{color:#b63828}.native-controls{position:absolute;right:12px;bottom:69px;z-index:6;display:flex;gap:9px;align-items:center;font-size:10px;background:#fffffff0;padding:8px;border-radius:7px;flex-wrap:wrap}.native-controls label{display:flex;align-items:center;gap:3px}.native-controls select,.native-controls button,.native-grid-panel button,.native-grid-panel select{font:inherit;border:1px solid #bdcfd8;border-radius:5px;padding:5px;background:#fff;color:#234657}.native-grid-panel{position:absolute;inset:0;z-index:5;background:#edf2f5;padding:12px 12px 125px;overflow:auto}.native-controls [hidden],.native-grid-panel[hidden],.native-controls[hidden]{display:none!important}.native-grid-panel header{display:grid;gap:8px;padding-bottom:12px;font-size:12px}.native-grid-panel header>div{display:flex;gap:8px;align-items:center}.native-grid-legend{max-width:400px;padding:5px 0}.native-grid-legend[hidden]{display:none}.native-grid-panel small{font-size:10px;line-height:1.5;color:#537082}.native-nine{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.native-grid-panel .native-card{padding:8px;overflow:hidden;text-align:left;box-shadow:0 2px 8px #173b4c0c}.native-card strong{font:10px monospace;display:block}.native-preview{aspect-ratio:600/340;display:flex;align-items:center;justify-content:center;font-size:10px}.native-preview img{width:100%;height:100%;object-fit:contain}.native-card small{display:block;font-size:9px}.native-card:hover{border-color:#287c9b;background:#f8fcff}.temperature-gradient{background:linear-gradient(90deg,#183f9a 0%,#147fce 7.49%,#1bc6bc 14.14%,#ffe548 17.47%,#ffb122 34.11%,#fa651b 57.40%,#db221e 84.03%,#970e32 100%)!important}.temperature-scale{position:relative;padding-top:4px}.temperature-scale:after{content:'80 °C → warm';position:absolute;top:-22px;left:17.47%;font-size:9px;color:#725321;background:#ffffffd9;padding:0 2px}@media(max-width:700px){.native-nine{gap:4px}.native-grid-panel{padding:8px 6px 130px}.native-card strong{font-size:8px}.native-card small{font-size:8px}.native-controls{bottom:68px;max-width:230px}.native-grid-panel header>div{flex-wrap:wrap}}`;
 document.head.append(style);
-window.PM3NativeTest={catalog:C,record,snapshot,build,color,colors,contactSide,loadMetrics,get decodedBytes(){return decodedBytes},get topologyBytes(){return topologyBytes},mode,dispose,get modelCacheSize(){return models.size},refresh,addFeatureFace,featureIndices,get tim2(){return tim2Overlay},get active(){return active},get loadedKey(){return loadedKey},get gridReady(){return !previewsRunning},get expanded(){return expanded}};
+window.PM3NativeTest={catalog:C,record,snapshot,build,present,color,colors,contactSide,loadMetrics,get decodedBytes(){return decodedBytes},get topologyBytes(){return topologyBytes},mode,dispose,get modelCacheSize(){return models.size},refresh,addFeatureFace,featureIndices,get tim2(){return tim2Overlay},get active(){return active},get loadedKey(){return loadedKey},get gridReady(){return !previewsRunning},get expanded(){return expanded}};
 })();
